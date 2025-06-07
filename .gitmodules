@@ -1,0 +1,3 @@
+[submodule "tour-frontend"]
+	path = tour-frontend
+	url = https://github.com/HoangDuonng/tour-frontend-preview.git
