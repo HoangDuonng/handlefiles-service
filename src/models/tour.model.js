@@ -59,6 +59,11 @@ const tourSchema = new mongoose.Schema({
   },
   customMetadata: {
     type: mongoose.Schema.Types.Mixed
+  },
+  type: {
+    type: String,
+    enum: ['main_banner', 'explore_tour'],
+    default: 'explore_tour'
   }
 }, {
   timestamps: true // This will add createdAt and updatedAt fields

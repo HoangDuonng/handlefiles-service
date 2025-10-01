@@ -22,4 +22,7 @@ router.get('/:tourId/xml', tourController.getTourXml);
 
 router.get('/:tourId/xmlfile', tourController.getTourXmlFile);
 
+// Route mới: Lấy danh sách tour theo type
+router.get('/type/:type', tourController.getToursByType);
+
 module.exports = router; 
