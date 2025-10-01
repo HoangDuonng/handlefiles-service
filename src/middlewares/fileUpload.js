@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 // Configure storage
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const tempDir = process.env.TEMP_UPLOADS_DIR || './temp_uploads';
+    const tempDir = process.env.TEMP_UPLOADS_DIR;
     cb(null, tempDir);
   },
   filename: function (req, file, cb) {
@@ -22,15 +22,18 @@ const fileFilter = (req, file, cb) => {
     'image/jpeg',
     'image/png',
     'image/gif',
+    'image/webp',
+    'image/svg+xml',
     'application/pdf',
     'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'video/mp4',
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, PDF, and DOC files are allowed.'), false);
+    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, PDF, DOC, and MP4 files are allowed.'), false);
   }
 };
 

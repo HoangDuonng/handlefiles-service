@@ -2,8 +2,8 @@ const path = require('path');
 const fs = require('fs');
 
 const setupStorage = () => {
-  const fileStorageRoot = process.env.FILE_STORAGE_ROOT || './file_storage_root';
-  const tempUploadsDir = process.env.TEMP_UPLOADS_DIR || './temp_uploads';
+  const fileStorageRoot = process.env.FILE_STORAGE_ROOT;
+  const tempUploadsDir = process.env.TEMP_UPLOADS_DIR;
 
   const requiredDirs = [
     fileStorageRoot,

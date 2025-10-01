@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
+
 const { 
   generateSafeFilename, 
   ensureDirectoryExists, 
@@ -16,205 +17,131 @@ const {
 const { validateRequired } = require('../utils/validator');
 const logger = require('../middlewares/logger');
 const File = require('../models/file.model');
+const fileService = require('../services/file.service');
 
 const fileController = {
+  
   // Upload a single file
   uploadFile: async (req, res) => {
     try {
-      if (!req.file) {
-        return errorResponse(res, { message: 'No file uploaded' }, 400);
-      }
-
-      // Validate required fields
-      validateRequired(req.body, ['context']);
-
-      const { context, entityId } = req.body;
-      const fileStorageRoot = process.env.FILE_STORAGE_ROOT || './file_storage_root';
-      const contextDir = path.join(fileStorageRoot, context);
-      
-      // Create context directory if it doesn't exist
-      await ensureDirectoryExists(contextDir);
-
-      // If entityId is provided, create a subdirectory for it
-      const targetDir = entityId 
-        ? path.join(contextDir, entityId)
-        : contextDir;
-
-      await ensureDirectoryExists(targetDir);
-
-      // Generate new filename and move file
-      const newFilename = generateSafeFilename(req.file.originalname);
-      const targetPath = path.join(targetDir, newFilename);
-
-      // Move file from temp to final location
-      await fs.rename(req.file.path, targetPath);
-
-      // Create file record in MongoDB
-      const file = new File({
-        filename: newFilename,
-        originalName: req.file.originalname,
-        path: targetPath,
-        size: req.file.size,
-        mimetype: req.file.mimetype,
-        context,
-        entityId
-      });
-
-      await file.save();
-
-      logger.info('File uploaded successfully', {
-        context,
-        entityId,
-        filename: newFilename,
-        size: req.file.size
-      });
-
-      return successResponse(res, file, 'File uploaded successfully');
+      const result = await fileService.uploadFile(req.file, req.body);
+      // Tạo url trả về cho frontend
+      const { context, entityId } = result;
+      const baseUrl = req.protocol + '://' + req.get('host');
+      let url = baseUrl + '/api/handlefile/files/' + context + '/';
+      if (entityId) url += entityId + '/';
+      url += result.filename;
+      // Bổ sung type, position nếu có gửi lên
+      const type = req.body.type || null;
+      const position = req.body.position || null;
+      return successResponse(res, {
+        ...result.toObject(),
+        url,
+        ...(type && { type }),
+        ...(position && { position })
+      }, 'File uploaded successfully');
     } catch (error) {
-      logger.error('File upload error:', {
-        error: error.message,
-        stack: error.stack,
-        context: req.body.context,
-        entityId: req.body.entityId
-      });
       return errorResponse(res, error);
     }
   },
 
+  // Upload multiple files
+  uploadMultipleFiles: async (req, res) => {
+    try {
+      const results = await fileService.uploadMultipleFiles(req.files, req.body);
+      const baseUrl = req.protocol + '://' + req.get('host');
+      const { context, entityId } = results[0];
+      
+      // Tạo URL cho từng file
+      const filesWithUrls = results.map(file => {
+        let url = baseUrl + '/api/handlefile/files/image/' + context + '/';
+        if (entityId) url += entityId + '/';
+        url += file.filename;
+        
+        const type = req.body.type || null;
+        const position = req.body.position || null;
+        
+        return {
+          ...file.toObject(),
+          url,
+          ...(type && { type }),
+          ...(position && { position })
+        };
+      });
+      
+      return successResponse(res, filesWithUrls, `${filesWithUrls.length} files uploaded successfully`);
+    } catch (error) {
+      return errorResponse(res, error);
+    }
+  },
+
+
   // Delete a file
+  
   deleteFile: async (req, res) => {
     try {
+      await fileService.deleteFile(req.params);
+      return successResponse(res, null, 'File deleted successfully');
+    } catch (error) {
+      return errorResponse(res, error);
+    }
+  },
+  
+
+  // Get file info
+  
+  getFileInfo: async (req, res) => {
+    try {
+      const result = await fileService.getFileInfo(req.params);
+      return successResponse(res, result, 'File info retrieved');
+    } catch (error) {
+      return errorResponse(res, error);
+    }
+  },
+  
+
+  
+  getFileContent: async (req, res) => {
+    try {
+      const filePath = await fileService.getFileContent(req.params);
+      return res.sendFile(filePath);
+    } catch (error) {
+      if (error.status === 404) {
+        return res.status(404).send('File not found');
+      }
+      return res.status(500).send('Error serving file');
+    }
+  },
+  
+
+  getImageFile: async (req, res) => {
+    try {
       const { context, filename, entityId } = req.params;
-      const fileStorageRoot = process.env.FILE_STORAGE_ROOT || './file_storage_root';
-      
+      const fileStorageRoot = process.env.FILE_STORAGE_ROOT
+        ? path.resolve(process.env.FILE_STORAGE_ROOT)
+        : path.join(__dirname, '..', 'file_storage_root');
       const filePath = entityId
         ? path.join(fileStorageRoot, context, entityId, filename)
         : path.join(fileStorageRoot, context, filename);
 
-      // Check if file exists in storage
-      try {
-        await fs.access(filePath);
-      } catch (error) {
-        logger.warn('File not found in storage', {
-          context,
-          entityId,
-          filename,
-          path: filePath
-        });
-        return notFoundResponse(res, 'File not found in storage');
+      const fsSync = require('fs');
+
+      if (!fsSync.existsSync(filePath)) {
+        return res.status(404).send('File not found');
       }
-
-      // Check if file exists in database
-      const file = await File.findOne({
-        context,
-        filename,
-        entityId: entityId || null
-      });
-
-      if (!file) {
-        logger.warn('File not found in database', {
-          context,
-          entityId,
-          filename
-        });
-        return notFoundResponse(res, 'File not found in database');
-      }
-
-      // Delete file from storage
-      await deleteFile(filePath);
-
-      // Delete file record from MongoDB
-      await file.deleteOne();
-
-      // If entityId is provided, check if directory is empty
-      if (entityId) {
-        const entityDir = path.join(fileStorageRoot, context, entityId);
-        try {
-          const files = await fs.readdir(entityDir);
-          if (files.length === 0) {
-            // Delete empty directory
-            await deleteDirectory(entityDir);
-            logger.info('Empty entity directory deleted', {
-              context,
-              entityId
-            });
-          }
-        } catch (dirError) {
-          logger.error('Error checking entity directory', {
-            error: dirError.message,
-            context,
-            entityId
-          });
-        }
-      }
-
-      logger.info('File deleted successfully', {
-        context,
-        entityId,
-        filename
-      });
-
-      return successResponse(res, null, 'File deleted successfully');
+      return res.sendFile(path.resolve(filePath));
     } catch (error) {
-      logger.error('File deletion error:', {
-        error: error.message,
-        stack: error.stack,
-        context: req.params.context,
-        filename: req.params.filename
-      });
-      return errorResponse(res, error);
+      console.error('Error serving file:', error);
+      return res.status(500).send('Error serving file');
     }
   },
 
-  // Get file info
-  getFileInfo: async (req, res) => {
+  deleteFilesByEntity: async (req, res) => {
     try {
-      const { context, filename, entityId } = req.params;
-
-      // Get file info from MongoDB
-      const file = await File.findOne({
-        context,
-        filename,
-        entityId: entityId || null
-      });
-
-      if (!file) {
-        return notFoundResponse(res, 'File not found');
-      }
-
-      // Check if file exists in storage
-      try {
-        await fs.access(file.path);
-      } catch (error) {
-        logger.warn('File not found in storage', {
-          context,
-          entityId,
-          filename,
-          path: file.path
-        });
-        return notFoundResponse(res, 'File not found in storage');
-      }
-
-      // Get additional file info from storage
-      const fileInfo = await getFileInfo(file.path);
-
-      logger.info('File info retrieved', {
-        context,
-        entityId,
-        filename
-      });
-
-      return successResponse(res, {
-        ...file.toObject(),
-        ...fileInfo
-      });
+      const { context, entityId } = req.params;
+      await fileService.deleteFilesByEntity({ context, entityId });
+      return successResponse(res, null, 'All files deleted successfully');
     } catch (error) {
-      logger.error('File info error:', {
-        error: error.message,
-        stack: error.stack,
-        context: req.params.context,
-        filename: req.params.filename
-      });
       return errorResponse(res, error);
     }
   }
