@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 // Cấu hình storage
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const tempDir = process.env.TEMP_UPLOADS_DIR || './temp_uploads';
+    const tempDir = process.env.TEMP_UPLOADS_DIR;
     cb(null, tempDir);
   },
   filename: function (req, file, cb) {

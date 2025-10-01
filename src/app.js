@@ -3,6 +3,8 @@ const express = require('express');
 const morgan = require('morgan');
 const logger = require('./middlewares/logger');
 const path = require('path');
+const cors = require('cors');
+const allowedOrigins = require('./config/cors');
 
 // Import configurations
 const setupMiddleware = require('./middlewares/middleware');
@@ -11,6 +13,9 @@ const setupStorage = require('./config/storage');
 
 // Khởi tạo app
 const app = express();
+
+// Cấu hình CORS theo env
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 // Cấu hình cho request lớn
 app.use(express.json({ limit: '500mb' }));

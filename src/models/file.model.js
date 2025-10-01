@@ -29,6 +29,14 @@ const fileSchema = new mongoose.Schema({
     type: String,
     required: false
   },
+  type: {
+    type: String,
+    required: false
+  },
+  position: {
+    type: String,
+    required: false
+  },
   createdAt: {
     type: Date,
     default: Date.now
